@@ -3,48 +3,51 @@
 #   code for the Aero Team.
 
 # import libraries here #
-import time  # not needed, excess
-import threading
+import time  # used in GPS() function
+import threading  # used for more fluid program
 import board  # needed for i2c declarations
 import busio  # needed for i2c declarations
 import adafruit_bno055  # used for Magnetometer, Accelerometer, Gyroscope
-import adafruit_pca9685  # used for Servo Driver Board
+# import adafruit_pca9685  # used for Servo Driver Board
 import adafruit_bmp3xx  # used for Precision Altimeter
 import adafruit_gps  # used for GPS
 import digitalio  # used for rfm95w radio
+from adafruit_servokit import ServoKit  # used for Servo Driver Board
+import haversine as hs  # used for stabilization calculations
+from numpy import arctan2, sin, cos, degrees  # used for stabilization calculations
+import adafruit_rfm9x  # used for Radio
+import math  # used for pi and atan2() in state checks
 # from Adafruit_BNO055 import BNO055
 
 
 # define pins here #
 
-
-
+cs = digitalio.DigitalInOut(board.D5)       # Radio pin
+reset = digitalio.DigitalInOut(board.D6)    # Radio pin
 
 # declare glider variables here #
 Glider = 4  # 3 for left glider, 4 for right glider
 ID = "G2"   # G1 for left glider, G2 for right glider
-"""
-# For Left Glider
-NeoGPS::Location_t otherPlace ( 279780483L , -820247268L ); //Change Lat and Lon of desired target
-float tLat = 36.52589035;
-float tLon = -88.91542816;
 
-# For Right Glider
-NeoGPS::Location_t otherPlace ( 279780616L , -820247573L );
-float tLat = 27.97806168;
-float tLon = -82.02475739;
-"""
+tLoc = (27.97806168, -82.02475739)    # Right glider destination
+# tLoc = (36.52589035, -88.91542816)      # Left glider destination
+gLoc = (0.0, 0.0)                   # default current location
+
 # declare radio variables here #
 
 ### Adafruit RFM95W Declaration ###
-levelOffsetZ = 0.0
-levelOffsetY = 0.0
-
+RADIO_FREQ_MHZ = 915.0  # Frequency of the radio in Mhz. Must match your
 spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
-"""
-cs = digitalio.DigitalInOut(board.D5)
-reset = digitalio.DigitalInOut(board.D6)
-"""
+rfm9x = adafruit_rfm9x.RFM9x(spi, cs, reset, RADIO_FREQ_MHZ, baudrate=9500000)
+rfm9x.signal_bandwidth = 250000
+rfm9x.coding_rate = 5
+rfm9x.spreading_factor = 7
+rfm9x.enable_crc = True
+rfm9x.ack_delay = 0.001
+rfm9x.node = 2
+rfm9x.destination = 1
+counter = 0
+ack_failed_counter = 0
 
 # declare Adafruit modules here #
 i2c = busio.I2C(board.SCL, board.SDA)
@@ -52,8 +55,13 @@ i2c = busio.I2C(board.SCL, board.SDA)
 ### Adafruit BNO055 declaration ###
 bno = adafruit_bno055.BNO055_I2C(i2c)
 
+pitchOffset = 0.0
+rollOffset = 0.0
+
 ### Adafruit Servo Driver declaration ###
-servo = adafruit_pca9685.PCA9685(i2c)
+# servo = adafruit_pca9685.PCA9685(i2c)
+
+kit = ServoKit(channels=8)
 
 ### Adafruit BMP3XX declaration ###
 bmp = adafruit_bmp3xx.BMP3XX_I2C(i2c)
@@ -67,12 +75,25 @@ stopComm = False
 pitch = 0.0
 roll = 0.0
 heading = 0.0
+
 headingAngleError = 0.0
+
+headingCorrectionValue = 0.0
+pitchCorrectionValue = 0.0
+negPitchCorrectionValue = 0.0
+rollCorrectionValue = 0.0
+
+finalValue = 0.0
+negFinalValue = 0.0
+
+limitAnglePitch = 30.0
+limitAngleRoll = 40.0
 
 Altitude = 0.0
 
-
-
+serMax = 180
+serNeu = 90
+serMin = 0
 
 # declare gps variables here #
 # gps_fix fix
@@ -93,7 +114,7 @@ uart = busio.UART(TX, RX, baudrate=9600, timeout=30)
 gps = adafruit_gps.GPS(uart, debug=False)
 
 # declare barometer variables here #
-"""
+""" (not needed?)
 #define BMP_SCK 13
 #define BMP_MISO 12
 #define BMP_MOSI 11
@@ -108,28 +129,24 @@ gps = adafruit_gps.GPS(uart, debug=False)
 2 = Kill
 """
 state = 0
-
 dropped = False
-
 
 ######### initialization of program ######### (use a main function)
 def main():
     print('Start of program after declarations...')
 
-    if not bno.begin():
-        raise RuntimeError('Failed to initialize BNO055! Is the sensor connected?')
-    if not bmp.begin():
-        raise RuntimeError('Could not find a valid BMP3 sensor, check wiring!')
+    # Offset for sensor not being level on startup
+    global rollOffset, pitchOffset
+    headingOffset, rollOffset, pitchOffset = bno.euler
 
-    # Set up oversampling and filter initialization
+    # Set up oversampling and filter initialization (needed?)
     bmp.temperature_oversampling()
     bmp.pressure_oversampling()
     bmp.filter_coefficient()
 
-    i = 0
-    while i < 50:
+    # Prepares bmp module for better accuracy (never uses tempAlt on purpose)
+    for i in range(0, 50):
         tempAlt = bmp.altitude() * 3.281
-        i = i + 1
 
     global startingAlt
     startingAlt = bmp.altitude() * 3.281
@@ -137,42 +154,6 @@ def main():
     global targetAlt
     if targetAlt == -1:
         targetAlt = (bmp.altitude() * 3.281) - startingAlt
-
-    # Initialize radio
-    """
-    pinMode(RFM95_RST, OUTPUT);
-    digitalWrite(RFM95_RST, HIGH);
-    
-    // manual reset
-    digitalWrite(RFM95_RST, LOW);
-    delay(10);
-    digitalWrite(RFM95_RST, HIGH);
-    delay(10);
-    
-    while (!rf95.init())
-    {
-    Serial.println("LoRa radio init failed");
-    while (1);
-    }
-    Serial.println("LoRa radio init OK!");
-    
-    if (!rf95.setFrequency(RF95_FREQ))
-    {
-    Serial.println("setFrequency failed");
-    while (1);
-    }
-    rf95.setTxPower(23, false);
-    
-    for ( int i = 200; i < 400; i ++)
-    {
-    pwm.setPWM(1, 0, i);
-    pwm.setPWM(6, 0, i);
-    delay(10);
-    }
-    
-    pwm.setPWM(1, 0, serNeu);
-    pwm.setPWM(6, 0, serNeu);
-    """
 
     # Begin Threading
     myGPS = threading.Thread(target=GPS, args=())
@@ -188,139 +169,136 @@ def main():
     while True:
         print('Heading Angle Error: ' + str(headingAngleError))
         global dropped
-        if state == 0:
-            # do nothing
-            """Really do nothing?"""
-        elif state == 1:
-            if not dropped:
-                if Glider == 4:
-                    # do something
-                    """
-                    pwm.setPWM(1, 0, 330);
-                    pwm.setPWM(6, 0, 270);
-                    """
-                elif Glider == 3:
-                    # do something
-                    """
-                    pwm.setPWM(1, 0, 270);
-                    pwm.setPWM(6, 0, 330);
-                    """
-                dropped = True
-            elif dropped:
-                if Altitude >= 12:
-                    # PHASE 1 (Correct Heading)
-                    if headingAngleError < -4 or headingAngleError > 4:
-                        stabilization()     # needs arguments
-                        # Stabilization(1, 1, 3, 5);
-                    # PHASE 2 (Dive & Navigate)
-                    elif -4 <= headingAngleError <= 4:
-                        # descentAngle = atan2(Altitude, tDistance - 41) * 180 / PI;
-                        stabilization()
-                        # Stabilization(3, 1, 2, -descentAngle);
-                # PHASE 3 (Lose speed and increase slope)
-                elif 12 > Altitude > 5:
-                    stabilization()
-                    # Stabilization(3, 1, 1, 10);
-                # PHASE 4 (Final Flare)
-                elif Altitude <= 5:
-                    stabilization()
-                    # Stabilization(2, 1, 0, 20);
-        # SUICIDE
-        elif state == 2:
-            # do something
-            """
-            pwm.setPWM(1, 0, 200);
-            pwm.setPWM(6, 0, 400);
-            """
+        # Checks for non-released state
+        if not state == 0:
+            if state == 1:
+                if not dropped:
+                    if Glider == 4:
+                        kit.servo[0].angle = 103
+                        kit.servo[1].angle = 76
+                    elif Glider == 3:
+                        kit.servo[0].angle = 76
+                        kit.servo[0].angle = 103
+                    dropped = True
+                elif dropped:
+                    if Altitude >= 12:
+                        # PHASE 1 (Correct Heading)
+                        if headingAngleError < -4 or headingAngleError > 4:
+                            stabilization(1, 1, 3, 5)
+                        # PHASE 2 (Dive & Navigate)
+                        elif -4 <= headingAngleError <= 4:
+                            descentAngle = math.atan2(Altitude, tDistance - 41) * 180 / math.pi
+                            stabilization(3, 1, 2, -descentAngle)
+                    # PHASE 3 (Lose speed and increase slope)
+                    elif 12 > Altitude > 5:
+                        stabilization(3, 1, 1, 10)
+                    # PHASE 4 (Final Flare)
+                    elif Altitude <= 5:
+                        stabilization(2, 1, 0, 20)
+            # SUICIDE
+            elif state == 2:
+                kit.servo[0].angle = 45
+                kit.servo[1].angle = 135
 
 
 # GPS function #
 def GPS():
-    print('GPS() function initialized')
+    gps.send_command(b'PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0')
+    gps.send_command(b'PMTK220,1000')
+    last_print = time.monotonic()
+    while True:
+        gps.update()
+        current = time.monotonic()
+        if current - last_print >= 1.0:
+            last_print = current
+            if not gps.has_fix:
+                print('Waiting for fix...')
+                continue
+            global gpsLat, gpsLon, tDistance, gLoc, tLoc, tHeading
+            gpsLat = gps.latitude
+            gpsLon = gps.longitude
+            gLoc = (gpsLat, gpsLon)
+            tDistance = hs.haversine(gLoc, tLoc)
+
+            # Calculates heading of glider
+            dL = tLoc[1] - gLoc[1]
+            X = cos(tLoc[0]) * sin(dL)
+            Y = cos(gLoc[0]) * sin(tLoc[0]) - sin(gLoc[0]) * cos(tLoc[0]) * cos(dL)
+            tHeading = arctan2(X, Y)
+            tHeading = ((degrees(tHeading) + 360) % 360)
 
 
 # Radio function #
 def radio():
     print('radio() function initialized')
+    # Look for a new packet: only accept if addresses to my_node
+    packet = rfm9x.receive(with_ack=True, with_header=True)
+    # If no packet was received during the timeout then None is returned.
+    if packet is not None:
+        # Received a packet!
+        # Print out the raw bytes of the packet:
+        print("Received (raw header):", [hex(x) for x in packet[0:4]])
+        print("Received (raw payload): {0}".format(packet[4:]))
+        print("RSSI: {0}".format(rfm9x.last_rssi))
+        # send response .001 sec after any packet received, putting any lower will actually slow the communication
+        time.sleep(.001)
+        global counter, ack_failed_counter
+        counter += 1
+        # send a message to destination_node from my_node
+        if not rfm9x.send_with_ack(bytes("response from node {} {}".format(rfm9x.node, counter), "UTF-8")):
+            ack_failed_counter += 1
+            print(" No Ack: ", counter, ack_failed_counter)
 
 
 # Stabilization function #
-def stabilization():
-    print('stabilization() function initialized')
+def stabilization(pitchScalar, rollScalar, headScalar, Alpha0):
+    global headingCorrectionValue, rollCorrectionValue, finalValue, negFinalValue, pitchCorrectionValue, negPitchCorrectionValue
+    headingCorrectionValue = mapArduino(headingAngleError, 180, -180, serMin, serMax)
+    pitchAngleCorrectionValue = pitch - Alpha0
+
+    if pitchAngleCorrectionValue >= 0:
+        pitchCorrectionValue = mapArduino(pitchAngleCorrectionValue, 0, -limitAnglePitch, serNeu, serMin)
+        negPitchCorrectionValue = mapArduino(pitchAngleCorrectionValue, 0, -limitAnglePitch, serNeu, serMax)
+    elif pitchAngleCorrectionValue < 0:
+        pitchCorrectionValue = mapArduino(pitchAngleCorrectionValue, 0, limitAnglePitch, serNeu, serMax)
+        negPitchCorrectionValue = mapArduino(pitchAngleCorrectionValue, 0, limitAnglePitch, serNeu, serMin)
+
+    sumScalar = pitchScalar + rollScalar + headScalar
+    finalValue = (pitchScalar * pitchCorrectionValue + rollScalar * rollCorrectionValue + headScalar * headingCorrectionValue) / sumScalar
+    negFinalValue = (pitchScalar * negPitchCorrectionValue + rollScalar * rollCorrectionValue + headScalar * headingCorrectionValue) / sumScalar
+
+    kit.servo[0].angle = finalValue
+    kit.servo[1].angle = negFinalValue
 
 
 # Read sensors function #
 def readSensors():
-    print('readSensors() functions initialized')
-    print('Reading BNO055 data...')
-    while True:
-        """
-        sensors_event_t event;
-        bno.getEvent(&event);
+    # Read the Euler angles for heading, roll, pitch (all in degrees).
+    global heading, roll, pitch
+    heading, roll, pitch = bno.euler()
 
-        pitch = event.orientation.z - levelOffsetZ;
-        roll = event.orientation.y - levelOffsetY;
-        currentHeading = event.orientation.x - 180;    
-        """
-        global heading, roll, pitch
-        # Read the Euler angles for heading, roll, pitch (all in degrees).
-        heading, roll, pitch = bno.read_euler()
-        # Read the calibration status, 0=uncalibrated and 3=fully calibrated.
-        sys, gyro, accel, mag = bno.get_calibration_status()
-        # Print everything out.
-        print('Heading={0:0.2F} Roll={1:0.2F} Pitch={2:0.2F}\tSys_cal={3} Gyro_cal={4} Accel_cal={5} Mag_cal={6}'.format(heading, roll, pitch, sys, gyro, accel, mag))
+    heading = heading - 180
+    roll = roll - rollOffset
+    pitch = pitch - pitchOffset
 
-        # Normalize to 0-360
-        if heading < 0:
-            heading = heading + 360
-        global headingAngleError
-        headingAngleError = tHeading - heading
+    # Normalize to 0-360
+    if heading < 0:
+        heading = heading + 360
+    global headingAngleError
+    headingAngleError = tHeading - heading
 
-        if headingAngleError >= 180:
-            headingAngleError = headingAngleError - 360
-        elif headingAngleError <= -180:
-            headingAngleError = headingAngleError + 360
+    if headingAngleError >= 180:
+        headingAngleError = headingAngleError - 360
+    elif headingAngleError <= -180:
+        headingAngleError = headingAngleError + 360
 
-        # Get relative altitude
-        global Altitude
-        Altitude = (bmp.altitude() * 3.281) - startingAlt
+    # Get relative altitude
+    global Altitude
+    Altitude = (bmp.altitude() * 3.281) - startingAlt
 
-        """ Arduino code
-        # Uncomment for barometer readings.
-        Serial.print("Altitude = ");
-        Serial.print(Altitude, 1);
-        Serial.println(" Ft");
-        # 
-        
-        measuredvbat = analogRead(VBATPIN);
-        measuredvbat *= 2;    // we divided by 2, so multiply back
-        measuredvbat *= 3.3;  // Multiply by 3.3V, our reference voltage
-        measuredvbat /= 1024; // convert to voltage
-        """
-
-
-
-        """ Python code
-        # Print system status and self test result.
-        status, self_test, error = bno.get_system_status()
-        print('System status: {0}'.format(status))
-        print('Self test result (0x0F is normal): 0x{0:02X}'.format(self_test))
-        # Print out an error if system status is in error mode.
-        if status == 0x01:
-            print('System error: {0}'.format(error))
-            print('See datasheet section 4.3.59 for the meaning.')
-
-        # Print BNO055 software revision and other diagnostic data.
-        sw, bl, accel, mag, gyro = bno.get_revision()
-        print('Software version:   {0}'.format(sw))
-        print('Bootloader version: {0}'.format(bl))
-        print('Accelerometer ID:   0x{0:02X}'.format(accel))
-        print('Magnetometer ID:    0x{0:02X}'.format(mag))
-        print('Gyroscope ID:       0x{0:02X}\n'.format(gyro))
-        """
-
-# Function for previous void loop or append to main() in while True loop #
-
+# Built-in map is not like the one in Arduino, so new function to do calculations
+def mapArduino(x, in_min, in_max, out_min, out_max):
+    return int((x-in_min) * (out_max-out_min) / (in_max-in_min) + out_min)
 
 if __name__ == '__main__':
     main()
