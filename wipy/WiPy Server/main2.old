@@ -1,0 +1,35 @@
+# main.py -- put your code here!
+
+import socket
+import pycom
+import _thread
+import time
+
+ss = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+
+ss.bind(('', 5000))
+
+ss.listen()
+
+
+
+def serv_sock(sock):
+
+    pycom.heartbeat(False)
+    #pycom.rgbled()
+
+    cs = sock.accept()
+    cs[0].settimeout(5.0)
+
+    print("New client connected at address: " + str(cs[1]))
+
+    while True:
+        data = cs[0].recv(1024)
+        pycom.rgbled(0x00ff00)
+        print(data)
+        time.sleep(1)
+        cs[0].send('Server still sees you!')
+        pycom.rgbled(0xFF0000)
+        time.sleep(1)
+
+t = _thread.start_new_thread(serv_sock, (ss,))

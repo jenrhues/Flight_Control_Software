@@ -1,0 +1,9 @@
+# boot.py -- run on boot-up
+
+from network import WLAN
+
+wlan = WLAN(mode=WLAN.AP, ssid='HawkWorks GS', auth=(WLAN.WPA2, 'aero2020'),  antenna=WLAN.INT_ANT)
+
+wlan.ifconfig(id=1)
+
+print(wlan.ap_sta_list())
