@@ -45,8 +45,8 @@ def cli_sock(sock):
             if send_lock.acquire():
                 #print(uart.read())
                 #uart.write('stuff and things')
-                msg = str(sock[1][0]) + ":" + data.decode('utf-8')
-                uart.write(msg.encode('utf-8'))
+                #msg = str(sock[1][0]) + ":" + data.decode('utf-8')
+                uart.write(data)
                 send_lock.release()
 
 t = _thread.start_new_thread(serv_sock, (ss, gliders))

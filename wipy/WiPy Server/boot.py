@@ -6,6 +6,7 @@ pycom.heartbeat(False)
 
 wlan = WLAN(mode=WLAN.AP, ssid='HawkWorks GS', auth=(WLAN.WPA2, 'aero2020'),  antenna=WLAN.INT_ANT)
 wlan.ifconfig(id=1)
+#wlan.antenna(WLAN.EXT_ANT)
 
 time.sleep(5)
 

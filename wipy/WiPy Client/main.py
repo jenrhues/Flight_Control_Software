@@ -23,21 +23,21 @@ def send_bno():
 
     heading = roll = pitch = 0.0
     x = y = z = w = 0.0
-#For efficiency convert things to a byte arr instread of a str
+
     while True:
         heading, roll, pitch = bno.get_euler()
         x, y, z, w = bno.get_quaternion()
-        msg = str(heading) + ',' + str(roll) + ',' + str(pitch) + ';' + str(x) + ',' + str(y) + ',' + str(z) + ',' + str(w) + '\n'
+        msg = '192.168.4.2:' + str(heading) + ',' + str(roll) + ',' + str(pitch) + ';' + str(x) + ',' + str(y) + ',' + str(z) + ',' + str(w) + '\n'
         s.send(msg)
-        time.sleep_ms(100)
+        time.sleep_ms(10)
 
 bno_thread = _thread.start_new_thread(send_bno, ())
 
-""" while True:
-    s.send('Client still sees you!')
-    pycom.rgbled(0x00F000)
-    time.sleep(1)
-    data = ''
-    data = s.recv(1024)
-    pycom.rgbled(0xFF0000)
-    print(data) """
+# while True:
+#     s.send('Client still sees you!')
+#     pycom.rgbled(0x00F000)
+#     time.sleep(1)
+#     data = ''
+#     data = s.recv(1024)
+#     pycom.rgbled(0xFF0000)
+#     print(data)
