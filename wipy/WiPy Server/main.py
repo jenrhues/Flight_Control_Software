@@ -51,35 +51,3 @@ def cli_sock(sock):
 
 t = _thread.start_new_thread(serv_sock, (ss, gliders))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-""" while True:
-    data = uart.read()
-    if data != None:
-        data = data.decode('utf-8')
-        print(data)
-
-        if "red" in data:
-            pycom.rgbled(0xFF0000)
-
-        if "green" in data:
-            pycom.rgbled(0x00FF00)
-
-        if "blue" in data:
-            pycom.rgbled(0x0000FF)
- """
