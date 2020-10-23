@@ -11,43 +11,30 @@ import adafruit_bno055  # used for Magnetometer, Accelerometer, Gyroscope
 # import adafruit_pca9685  # used for Servo Driver Board
 import adafruit_bmp3xx  # used for Precision Altimeter
 import adafruit_gps  # used for GPS
-import digitalio  # used for rfm95w radio
+# import digitalio  # used for rfm95w radio
 from adafruit_servokit import ServoKit  # used for Servo Driver Board
 import haversine as hs  # used for stabilization calculations
 from numpy import arctan2, sin, cos, degrees  # used for stabilization calculations
-import adafruit_rfm9x  # used for Radio
+# import adafruit_rfm9x  # used for Radio
 import math  # used for pi and atan2() in state checks
 # from Adafruit_BNO055 import BNO055
 
 
 # define pins here #
 
-cs = digitalio.DigitalInOut(board.D5)       # Radio pin
-reset = digitalio.DigitalInOut(board.D6)    # Radio pin
-
 # declare glider variables here #
-Glider = 4  # 3 for left glider, 4 for right glider
-ID = "G2"   # G1 for left glider, G2 for right glider
+Glider = 0  # 3 for left glider, 4 for right glider, 5 for back glider
+ID = "G0"   # G1 for left glider, G2 for right glider, G3 for back glider
 
-tLoc = (27.97806168, -82.02475739)    # Right glider destination
-# tLoc = (36.52589035, -88.91542816)      # Left glider destination
+tLocR = (36.525869, -88.915254)    # Right glider destination
+tLocL = (36.526071, -88.915248)    # Left glider destination
+tLocB = (36.526000, -88.915257)    # Back glider destination
+tLocList = [tLocL, tLocR, tLocB]
+tLoc = (0.0, -0.0)
 gLoc = (0.0, 0.0)                   # default current location
 
 # declare radio variables here #
-
-### Adafruit RFM95W Declaration ###
-RADIO_FREQ_MHZ = 915.0  # Frequency of the radio in Mhz. Must match your
-spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
-rfm9x = adafruit_rfm9x.RFM9x(spi, cs, reset, RADIO_FREQ_MHZ, baudrate=9500000)
-rfm9x.signal_bandwidth = 250000
-rfm9x.coding_rate = 5
-rfm9x.spreading_factor = 7
-rfm9x.enable_crc = True
-rfm9x.ack_delay = 0.001
-rfm9x.node = 2
-rfm9x.destination = 1
-counter = 0
-ack_failed_counter = 0
+# need networking code from Anderson ##########
 
 # declare Adafruit modules here #
 i2c = busio.I2C(board.SCL, board.SDA)
@@ -59,8 +46,6 @@ pitchOffset = 0.0
 rollOffset = 0.0
 
 ### Adafruit Servo Driver declaration ###
-# servo = adafruit_pca9685.PCA9685(i2c)
-
 kit = ServoKit(channels=8)
 
 ### Adafruit BMP3XX declaration ###
@@ -102,9 +87,6 @@ tDistance = 0.0
 gpsLat = 0.0
 gpsLon = 0.0
 
-### Adafruit Mini GPS PA1010 declaration ###
-# gps = adafruit_gps.GPS_GtopI2C(i2c, debug=False) # Use I2C interface
-
 ### Adafruit Ultimate GPS declaration ###
 RX = board.RX
 TX = board.TX
@@ -112,15 +94,6 @@ TX = board.TX
 uart = busio.UART(TX, RX, baudrate=9600, timeout=30)
 
 gps = adafruit_gps.GPS(uart, debug=False)
-
-# declare barometer variables here #
-""" (not needed?)
-#define BMP_SCK 13
-#define BMP_MISO 12
-#define BMP_MOSI 11
-#define BMP_CS 10
-#define SEALEVELPRESSURE_HPA (1013.25)
-"""
 
 # declare state variables here #  (if method is still used)
 """
@@ -135,14 +108,22 @@ dropped = False
 def main():
     print('Start of program after declarations...')
 
+    global ID, Glider, tLoc
+    Glider = int(input('Glider int:'))
+
+    if Glider == 5:
+        tLoc = tLocList[2]
+        ID = 'G3'
+    elif Glider == 4:
+        tLoc = tLocList[1]
+        ID = 'G2'
+    elif Glider == 3:
+        tLoc = tLocList[0]
+        ID = 'G1'
+
     # Offset for sensor not being level on startup
     global rollOffset, pitchOffset
     headingOffset, rollOffset, pitchOffset = bno.euler
-
-    # Set up oversampling and filter initialization (needed?)
-    bmp.temperature_oversampling()
-    bmp.pressure_oversampling()
-    bmp.filter_coefficient()
 
     # Prepares bmp module for better accuracy (never uses tempAlt on purpose)
     for i in range(0, 50):
@@ -173,12 +154,15 @@ def main():
         if not state == 0:
             if state == 1:
                 if not dropped:
-                    if Glider == 4:
+                    if Glider == 5:
+                        kit.servo[0].angle = 270
+                        kit.servo[1].angle = 270
+                    elif Glider == 4:
                         kit.servo[0].angle = 103
                         kit.servo[1].angle = 76
                     elif Glider == 3:
                         kit.servo[0].angle = 76
-                        kit.servo[0].angle = 103
+                        kit.servo[1].angle = 103
                     dropped = True
                 elif dropped:
                     if Altitude >= 12:
@@ -203,8 +187,6 @@ def main():
 
 # GPS function #
 def GPS():
-    gps.send_command(b'PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0')
-    gps.send_command(b'PMTK220,1000')
     last_print = time.monotonic()
     while True:
         gps.update()
@@ -231,23 +213,8 @@ def GPS():
 # Radio function #
 def radio():
     print('radio() function initialized')
-    # Look for a new packet: only accept if addresses to my_node
-    packet = rfm9x.receive(with_ack=True, with_header=True)
-    # If no packet was received during the timeout then None is returned.
-    if packet is not None:
-        # Received a packet!
-        # Print out the raw bytes of the packet:
-        print("Received (raw header):", [hex(x) for x in packet[0:4]])
-        print("Received (raw payload): {0}".format(packet[4:]))
-        print("RSSI: {0}".format(rfm9x.last_rssi))
-        # send response .001 sec after any packet received, putting any lower will actually slow the communication
-        time.sleep(.001)
-        global counter, ack_failed_counter
-        counter += 1
-        # send a message to destination_node from my_node
-        if not rfm9x.send_with_ack(bytes("response from node {} {}".format(rfm9x.node, counter), "UTF-8")):
-            ack_failed_counter += 1
-            print(" No Ack: ", counter, ack_failed_counter)
+    # accomplished with wipy module software
+    # still needs implementation for changing states
 
 
 # Stabilization function #
@@ -274,7 +241,7 @@ def stabilization(pitchScalar, rollScalar, headScalar, Alpha0):
 # Read sensors function #
 def readSensors():
     # Read the Euler angles for heading, roll, pitch (all in degrees).
-    global heading, roll, pitch
+    global heading, roll, pitch, rollOffset, pitchOffset
     heading, roll, pitch = bno.euler()
 
     heading = heading - 180
