@@ -23,7 +23,7 @@ def serv_sock(sock, lst):
 
     while True:
         cs = sock.accept()
-        cs[0].settimeout(0)
+        cs[0].settimeout(5)
 
         lst[cs[1]] = cs[0]
 
@@ -42,7 +42,7 @@ def cli_sock(sock):
         if data != None:
             #print(str(sock[1]) + ": " + data.decode('utf-8'))
             
-            if send_lock.acquire():
+            if send_lock.acquire(0):
                 #print(uart.read())
                 #uart.write('stuff and things')
                 #msg = str(sock[1][0]) + ":" + data.decode('utf-8')

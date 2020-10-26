@@ -6,7 +6,7 @@ import time
 from machine import I2C
 
 # configure the I2C bus: use default PIN assignments (SDA = P09, SCL = P10)
-i2c = I2C(0, pins=('P19','P20'))  # configure the I2C bus
+i2c = I2C(0, pins=('P9','P10'))  # configure the I2C bus
 i2c.init(I2C.MASTER, baudrate=9600)  # init as a master baudrate = freq di lettura del dato
 
 # I2C addresses

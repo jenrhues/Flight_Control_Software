@@ -29,7 +29,7 @@ def send_bno():
         x, y, z, w = bno.get_quaternion()
         msg = '192.168.4.2:' + str(heading) + ',' + str(roll) + ',' + str(pitch) + ';' + str(x) + ',' + str(y) + ',' + str(z) + ',' + str(w) + '\n'
         s.send(msg)
-        time.sleep_ms(10)
+        time.sleep_ms(150)
 
 bno_thread = _thread.start_new_thread(send_bno, ())
 
