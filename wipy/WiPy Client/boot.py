@@ -23,14 +23,6 @@ gps.send_command('PMTK220,500')
 bno = BNO055(i2c, transpose=(1, 2, 0))
 
 pycom.heartbeat(False)
-pycom.rgbled(0xf000f0)
+pycom.rgbled(0x0f00f0)
 
-while not wlan.isconnected():
-    wlan.connect('HawkWorks GS', auth=(WLAN.WPA2, 'aero2020'))
-    wlan.ifconfig(config=('192.168.4.2', '255.255.255.0', '192.168.4.1', '8.8.8.8'))
-    time.sleep(1)
-
-s = socket.socket()
-s.connect(('192.168.4.1', 5000))
-
-pycom.rgbled(0x00F000)
+s = None

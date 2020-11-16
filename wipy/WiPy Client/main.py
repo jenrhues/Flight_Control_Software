@@ -9,6 +9,21 @@ heading = roll = pitch = 0.0
 x = y = z = w = 0.0
 lat = lng = gps_quality = 0.0
 
+def data_link():
+    global s
+    while True:
+        while not wlan.isconnected():
+            pycom.rgbled(0xf000f0)
+            wlan.connect('HawkWorks GS', auth=(WLAN.WPA2, 'aero2020'))
+            wlan.ifconfig(config=('192.168.4.2', '255.255.255.0', '192.168.4.1', '8.8.8.8'))
+            time.sleep(1)
+
+            if wlan.isconnected():
+                s = socket.socket()
+                s.connect(('192.168.4.1', 5000))
+                data_thread = _thread.start_new_thread(send_data, ())
+                pycom.rgbled(0x00F000)
+
 def send_data():
 
     global heading
@@ -22,7 +37,7 @@ def send_data():
     global lng
     global gps_quality
 
-    while True:
+    while wlan.isconnected():
         rssi = wlan.joined_ap_info()[3]
         msg = '192.168.4.2:' + str(heading) + ',' + str(roll) + ',' + str(pitch) + ';' + str(x) + ',' + str(y) + ',' + str(z) + ',' + str(w) + ';' + str(rssi) + ';' + str(lat) + ',' + str(lng) + ',' + str(gps_quality) + '\n'
         s.send(msg)
@@ -70,5 +85,5 @@ def get_gps():
 
 bno_thread = _thread.start_new_thread(get_bno, ())
 gps_thread = _thread.start_new_thread(get_gps, ())
-data_thread = _thread.start_new_thread(send_data, ())
+link_thread = _thread.start_new_thread(data_link, ())
 
