@@ -1,0 +1,89 @@
+# main.py -- put your code here!
+
+import socket
+import pycom
+import _thread
+import time
+from machine import UART
+
+uart = UART(1, baudrate=400000, pins=('P19','P20'))
+uart.init(baudrate=400000, bits=8, parity=None, stop=1, pins=('P19','P20'))
+
+ss = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+
+ss.bind(('', 5000))
+
+ss.listen()
+
+g1_lock = _thread.allocate_lock()
+g2_lock = _thread.allocate_lock()
+g3_lock = _thread.allocate_lock()
+
+glider1_data = glider2_data = glider3_data = b''
+
+
+def serv_sock(sock, glider1_data, glider2_data, glider3_data):
+
+    while True:
+        cs = sock.accept()
+        cs[0].settimeout(0)
+
+        if '192.168.4.2' in cs[1][0]:
+            _thread.start_new_thread(g1_sock, (cs, glider1_data))
+        elif '192.168.4.3' in cs[1][0]:
+            _thread.start_new_thread(g2_sock, (cs, glider2_data))
+
+
+def send_pi(glider1_data, glider2_data, glider3_data):
+
+    while True:
+        #print(glider1_data)
+        if glider1_data != b'':
+            uart.write(glider1_data)
+        if glider2_data != b'':
+            uart.write(glider2_data)
+        if glider3_data != b'':
+            uart.write(glider3_data)
+
+
+    
+
+def g1_sock(sock, glider1_data):
+
+    pycom.rgbled(0x00FF00)
+    #print("New client connected at address: " + str(sock[1]))
+
+    while True:
+        data = sock[0].readline()
+        if data != None:
+            #print(str(sock[1]) + ": " + data.decode('utf-8'))
+            print("hi")
+            if g1_lock.acquire():
+                print(data)
+                #print(uart.read())
+                #uart.write('stuff and things')
+                #msg = str(sock[1][0]) + ":" + data.decode('utf-8')
+                glider1_data = data
+                g1_lock.release()
+
+
+def g2_sock(sock, glider2_data):
+
+    pycom.rgbled(0x00FF00)
+    #print("New client connected at address: " + str(sock[1]))
+
+    while True:
+        data = sock[0].readline()
+        if data != None:
+            #print(str(sock[1]) + ": " + data.decode('utf-8'))
+            
+            if g2_lock.acquire():
+                #print(uart.read())
+                #uart.write('stuff and things')
+                #msg = str(sock[1][0]) + ":" + data.decode('utf-8')
+                glider2_data = data
+                g2_lock.release()
+
+t = _thread.start_new_thread(serv_sock, (ss, glider1_data, glider2_data, glider3_data))
+st = _thread.start_new_thread(send_pi, (glider1_data, glider2_data, glider3_data))
+

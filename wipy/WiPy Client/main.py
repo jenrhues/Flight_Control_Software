@@ -1,43 +1,74 @@
 # main.py -- put your code here!
 
-import socket
 import pycom
 import time
 import _thread
-import lib_imu as bno
 
-pycom.heartbeat(False)
 
-s = socket.socket()
+heading = roll = pitch = 0.0
+x = y = z = w = 0.0
+lat = lng = gps_quality = 0.0
 
-time.sleep(1)
+def send_data():
 
-s.connect(('192.168.4.1', 5000))
-
-time.sleep(1)
-
-pycom.rgbled(0x00F000)
-
-def send_bno():
-    bno.set_mode('ndof')
-
-    heading = roll = pitch = 0.0
-    x = y = z = w = 0.0
+    global heading
+    global roll
+    global pitch
+    global x
+    global y
+    global z
+    global w
+    global lat
+    global lng
+    global gps_quality
 
     while True:
-        heading, roll, pitch = bno.get_euler()
-        x, y, z, w = bno.get_quaternion()
-        msg = '192.168.4.2:' + str(heading) + ',' + str(roll) + ',' + str(pitch) + ';' + str(x) + ',' + str(y) + ',' + str(z) + ',' + str(w) + '\n'
+        rssi = wlan.joined_ap_info()[3]
+        msg = '192.168.4.2:' + str(heading) + ',' + str(roll) + ',' + str(pitch) + ';' + str(x) + ',' + str(y) + ',' + str(z) + ',' + str(w) + ';' + str(rssi) + ';' + str(lat) + ',' + str(lng) + ',' + str(gps_quality) + '\n'
         s.send(msg)
-        time.sleep_ms(150)
+        time.sleep_ms(50)
 
-bno_thread = _thread.start_new_thread(send_bno, ())
+def get_bno():
+    #bno.set_mode('ndof')
 
-# while True:
-#     s.send('Client still sees you!')
-#     pycom.rgbled(0x00F000)
-#     time.sleep(1)
-#     data = ''
-#     data = s.recv(1024)
-#     pycom.rgbled(0xFF0000)
-#     print(data)
+    global heading
+    global roll
+    global pitch
+    global x
+    global y
+    global z
+    global w
+
+    while True:
+        heading, roll, pitch = bno.euler()
+        w, x, y, z = bno.quaternion()
+        
+        time.sleep_ms(75)
+
+def get_gps():
+
+    global lat
+    global lng
+    global gps_quality
+    
+    while True:
+        # Make sure to call gps.update() every loop iteration and at least twice
+        # as fast as data comes from the GPS unit (usually every second).
+        # This returns a bool that's true if it parsed new data (you can ignore it
+        # though if you don't care and instead look at the has_fix property).
+        gps.update()
+        
+        if gps.has_fix:            
+            # We have a fix! (gps.has_fix is true)
+            
+            lat = gps.latitude
+            lng = gps.longitude
+            gps_quality = gps.fix_quality
+
+    time.sleep_ms(250)
+
+
+bno_thread = _thread.start_new_thread(get_bno, ())
+gps_thread = _thread.start_new_thread(get_gps, ())
+data_thread = _thread.start_new_thread(send_data, ())
+

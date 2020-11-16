@@ -1,19 +1,18 @@
 # main.py -- put your code here!
 
 import socket
-import pycom
 import _thread
 import time
 from machine import UART
 
-uart = UART(1, baudrate=400000, pins=('P19','P20'))
-uart.init(baudrate=400000, bits=8, parity=None, stop=1, pins=('P19','P20'))
+uart = UART(1, 400000)
+uart.init(bits=8, parity=None, stop=1, tx=25, rx=26)
 
 ss = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
 
 ss.bind(('', 5000))
 
-ss.listen()
+ss.listen(5)
 
 send_lock = _thread.allocate_lock()
 
@@ -34,7 +33,7 @@ def serv_sock(sock, lst):
 
 def cli_sock(sock):
 
-    pycom.rgbled(0x00FF00)
+    #pycom.rgbled(0x00FF00)
     #print("New client connected at address: " + str(sock[1]))
 
     while True:

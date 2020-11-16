@@ -19,6 +19,6 @@ def send_bno():
         rssi = wlan.status('rssi')
         msg = '192.168.4.3:' + str(heading) + ',' + str(roll) + ',' + str(pitch) + ';' + str(x) + ',' + str(y) + ',' + str(z) + ',' + str(w) + ';' + str(rssi) + '\n'
         s.send(msg)
-        time.sleep_ms(50)
+        time.sleep_ms(150)
 
 bno_thread = _thread.start_new_thread(send_bno, ())

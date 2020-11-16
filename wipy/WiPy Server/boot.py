@@ -1,13 +1,13 @@
-from network import WLAN
-import pycom
+import machine
+import network as nw
 import time
 
-pycom.heartbeat(False)
+machine.freq(240000000)
 
-wlan = WLAN(mode=WLAN.AP, ssid='HawkWorks GS', auth=(WLAN.WPA2, 'aero2020'),  antenna=WLAN.EXT_ANT)
-wlan.ifconfig(id=1)
-wlan.wifi_protocol((0,0,0,1))
+wlan = nw.WLAN(nw.AP_IF)
+wlan.active(True)
+nw.phy_mode(nw.AP_IF, nw.MODE_LR)
+
+wlan.config(essid='HawkWorks GS', channel=11, password='aero2020', authmode=3)
 
 time.sleep(1)
-
-pycom.rgbled(0xFF00FF)
