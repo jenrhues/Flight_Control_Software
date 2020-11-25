@@ -7,6 +7,7 @@ import socket
 import pycom
 import adafruit_gps
 from bno055 import *
+from adafruit_bmp3xx import *
 
 wlan = WLAN(mode=WLAN.STA, antenna=WLAN.INT_ANT)
 wlan.wifi_protocol((0,0,0,1))
@@ -19,6 +20,11 @@ i2c.init(I2C.MASTER, baudrate=9600)
 gps = adafruit_gps.GPS(uart)
 gps.send_command('PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0')
 gps.send_command('PMTK220,500')
+
+bmp = BMP3XX_I2C(i2c)
+bmp.pressure_oversampling(16)
+bmp.temperature_oversampling(2)
+bmp.filter_coefficient(4)
 
 bno = BNO055(i2c, transpose=(1, 2, 0))
 

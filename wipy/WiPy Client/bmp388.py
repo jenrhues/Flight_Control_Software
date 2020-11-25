@@ -2,7 +2,8 @@
 import time
 from math import pow
 import sys
-class DFRobot_BMP388:
+
+class BMP388:
   def __init__(self):
     self.op_mode = 0
     self.par_t1 = 0
@@ -198,11 +199,11 @@ class DFRobot_BMP388:
     reg_data[0] = 0x00;
     reg_addr = 0x19;
     self.bmp3_set_regs(reg_addr, reg_data);
-class DFRobot_BMP388_SPI(DFRobot_BMP388):
+class BMP388_SPI(BMP388):
   def __init__(self,spi,cs):
     self.spi = spi
     self.cs = cs    
-    super(DFRobot_BMP388_SPI,self).__init__()
+    super(BMP388_SPI,self).__init__()
 
   def bmp3_get_regs(self,reg,len):
     regAddr = bytearray(1)
@@ -224,10 +225,10 @@ class DFRobot_BMP388_SPI(DFRobot_BMP388):
     self.spi.write(data)
     self.cs.value(1)
     
-class DFRobot_BMP388_I2C(DFRobot_BMP388):
+class BMP388_I2C(BMP388):
   def __init__(self,i2c):
     self.i2c = i2c
-    super(DFRobot_BMP388_I2C,self).__init__()
+    super(BMP388_I2C,self).__init__()
 
   def bmp3_get_regs(self,reg,len):
     rslt = self.i2c.readfrom_mem(self.addr,reg,len)
